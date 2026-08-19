@@ -223,14 +223,19 @@ const NO_POSSESS_TIME = 0.25;
 // rectangular hit boxes: measured along the attacker's facing axis (forward)
 // and perpendicular to it (width), starting just past the player's edge.
 const HIT_START = PLAYER_RADIUS - 4;
-const KICK_LENGTH = 42, KICK_HALF_WIDTH = 24;
-const FART_LENGTH = 36, FART_HALF_WIDTH = 30;
+const KICK_LENGTH = 38, KICK_HALF_WIDTH = 9;
+const FART_LENGTH = 30, FART_HALF_WIDTH = 20;
 
 // ultimate (필살기)
 const ULTIMATE_CHARGE_TIME = 15; // seconds to fully charge
 const ULTIMATE_LENGTH = 60, ULTIMATE_HALF_WIDTH = 40;
 const ULTIMATE_STUN = 1.0;
 const ULTIMATE_SHOOT_SPEED = 900;
+
+// pose durations (how long each attack's visual fx / animation pose is held)
+const KICK_FX_DUR = 0.12;
+const FART_FX_DUR = 0.18;
+const ULTIMATE_FX_DUR = 0.22;
 
 // ---------- Input ----------
 const keys = new Set();
@@ -252,6 +257,7 @@ function makePlayer(x, y, color, facing) {
     kickCd: 0, fartCd: 0,
     attackFx: 0, attackType: null,
     ultimateCharge: 0,
+    animPhase: 0,
   };
 }
 
@@ -329,6 +335,8 @@ function updatePlayer(pl, dt, moveDir) {
     pl.y += pl.vy * dt;
     pl.x = Math.max(FIELD_LEFT + PLAYER_RADIUS, Math.min(FIELD_RIGHT - PLAYER_RADIUS, pl.x));
     pl.y = Math.max(FIELD_TOP + PLAYER_RADIUS, Math.min(FIELD_BOTTOM - PLAYER_RADIUS, pl.y));
+    const speed = Math.hypot(pl.vx, pl.vy);
+    pl.animPhase += dt * (speed > 10 ? 9 : 3.2);
   }
 
   if (pl.kickCd > 0) pl.kickCd -= dt;
@@ -340,7 +348,7 @@ function tryAttack(attacker, defender, kickPressed, fartPressed) {
   if (attacker.stunTimer > 0) return;
   if (kickPressed && attacker.kickCd <= 0) {
     attacker.kickCd = KICK_COOLDOWN;
-    attacker.attackFx = 0.12;
+    attacker.attackFx = KICK_FX_DUR;
     attacker.attackType = 'kick';
 
     if (ball.possessor === attacker) {
@@ -369,7 +377,7 @@ function tryAttack(attacker, defender, kickPressed, fartPressed) {
   }
   if (fartPressed && attacker.fartCd <= 0) {
     attacker.fartCd = FART_COOLDOWN;
-    attacker.attackFx = 0.18;
+    attacker.attackFx = FART_FX_DUR;
     attacker.attackType = 'fart';
     // fart hits behind the attacker, opposite of facing direction
     const backDir = { x: -attacker.facing.x, y: -attacker.facing.y };
@@ -385,7 +393,7 @@ function tryUltimate(attacker, defender, ultPressed) {
   if (attacker.stunTimer > 0) return;
   if (!ultPressed || attacker.ultimateCharge < 1) return;
   attacker.ultimateCharge = 0;
-  attacker.attackFx = 0.22;
+  attacker.attackFx = ULTIMATE_FX_DUR;
   attacker.attackType = 'ultimate';
 
   if (ball.possessor === attacker) {
@@ -696,36 +704,166 @@ function drawHitRect(pl, forwardDir, minF, maxF, halfW, color) {
   ctx.restore();
 }
 
-function drawPlayer(pl) {
-  ctx.save();
-  if (pl.stunTimer > 0) {
-    const shake = Math.sin(performance.now() / 20) * 2;
-    ctx.translate(shake, 0);
-  }
+// ---------- Chick character: 3 poses (run / kick / fart) drawn as live vector art ----------
+function chickLeg(fx, fy, footR) {
   ctx.beginPath();
-  ctx.arc(pl.x, pl.y, PLAYER_RADIUS, 0, Math.PI * 2);
-  ctx.fillStyle = pl.stunTimer > 0 ? '#adb5bd' : pl.color;
+  ctx.moveTo(-2, fy * 0.35);
+  ctx.lineTo(fx, fy);
+  ctx.stroke();
+  ctx.beginPath();
+  ctx.arc(fx, fy, footR, 0, Math.PI * 2);
+  ctx.fill();
+}
+
+function chickWing(wx, wy, rot, fill, stroke) {
+  ctx.save();
+  ctx.translate(wx, wy);
+  ctx.rotate(rot);
+  ctx.beginPath();
+  ctx.ellipse(0, 0, 7.5, 4, 0, 0, Math.PI * 2);
+  ctx.fillStyle = fill;
+  ctx.fill();
+  ctx.strokeStyle = stroke;
+  ctx.lineWidth = 1;
+  ctx.stroke();
+  ctx.restore();
+}
+
+function drawCharacter(pl) {
+  const angle = Math.atan2(pl.facing.y, pl.facing.x);
+  const stunned = pl.stunTimer > 0;
+
+  let pose = 'run';
+  if (pl.attackFx > 0 && (pl.attackType === 'kick' || pl.attackType === 'ultimate')) pose = 'kick';
+  else if (pl.attackFx > 0 && pl.attackType === 'fart') pose = 'fart';
+
+  const bodyFill = stunned ? '#ced4da' : '#ffe066';
+  const bodyStroke = stunned ? '#868e96' : '#f59f00';
+  const wingFill = stunned ? '#b0b5bd' : '#ffd43b';
+  const legColor = stunned ? '#868e96' : '#e8590c';
+  const beakFill = stunned ? '#adb5bd' : '#fd7e14';
+  const R = 15;
+
+  ctx.save();
+  ctx.translate(pl.x, pl.y);
+  if (stunned) ctx.translate(Math.sin(performance.now() / 20) * 2, 0);
+  ctx.rotate(angle);
+
+  const bob = pose === 'run' && !stunned ? Math.sin(pl.animPhase) * 1.4 : 0;
+  const squat = pose === 'fart' ? 0.88 : 1;
+
+  // --- tail fluff ---
+  ctx.fillStyle = bodyFill;
+  ctx.beginPath();
+  ctx.ellipse(-R + 1, bob, 5, 4, 0, 0, Math.PI * 2);
+  ctx.fill();
+
+  // --- wings ---
+  if (pose === 'kick') {
+    chickWing(-4, -R * 0.85 * squat, -0.6, wingFill, bodyStroke);
+    chickWing(-4, R * 0.85 * squat, 0.6, wingFill, bodyStroke);
+  } else if (pose === 'fart') {
+    chickWing(0, -R * 0.6 * squat, 0.9, wingFill, bodyStroke);
+    chickWing(0, R * 0.6 * squat, -0.9, wingFill, bodyStroke);
+  } else {
+    const flap = stunned ? 0.15 : Math.sin(pl.animPhase * 2) * 0.35;
+    chickWing(-2, -R * 0.7, flap, wingFill, bodyStroke);
+    chickWing(-2, R * 0.7, -flap, wingFill, bodyStroke);
+  }
+
+  // --- fart puff cloud (behind the body, opposite the beak) ---
+  if (pose === 'fart') {
+    const t = 1 - Math.max(0, pl.attackFx) / FART_FX_DUR;
+    const cx = -R - 8 - t * 10;
+    ctx.fillStyle = `rgba(200,255,170,${0.85 - t * 0.6})`;
+    ctx.strokeStyle = 'rgba(140,200,120,0.8)'; ctx.lineWidth = 1;
+    [[-4, 0, 5], [3, -4, 3.6], [3, 4, 3.6]].forEach(([ox, oy, r]) => {
+      ctx.beginPath();
+      ctx.arc(cx + ox * (1 + t), oy * (1 + t * 0.5), r + t * 3, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.stroke();
+    });
+  }
+
+  // --- body ---
+  ctx.save();
+  ctx.scale(1, squat);
+  ctx.beginPath();
+  ctx.arc(0, bob / squat, R, 0, Math.PI * 2);
+  ctx.fillStyle = bodyFill;
   ctx.fill();
   ctx.lineWidth = 2;
-  ctx.strokeStyle = '#212529';
+  ctx.strokeStyle = bodyStroke;
   ctx.stroke();
+  ctx.restore();
 
-  // facing indicator
+  // --- legs (drawn over the lower body so they read clearly) ---
+  ctx.strokeStyle = legColor; ctx.fillStyle = legColor; ctx.lineWidth = 2.5; ctx.lineCap = 'round';
+  if (pose === 'kick') {
+    chickLeg(R * 1.7, bob - 5, 2.8);     // kicking leg, thrust well past the body
+    chickLeg(-4, bob + R + 1, 2.2);      // planted back leg
+  } else if (pose === 'fart') {
+    chickLeg(-3, bob - (R + 1), 2.2);
+    chickLeg(-3, bob + (R + 1), 2.2);
+  } else {
+    const swing = stunned ? 0 : Math.sin(pl.animPhase) * 6;
+    chickLeg(swing, bob - (R + 2), 2.2);
+    chickLeg(-swing, bob + (R + 2), 2.2);
+  }
+
+  // --- beak ---
+  ctx.fillStyle = beakFill;
   ctx.beginPath();
-  ctx.moveTo(pl.x + pl.facing.x * PLAYER_RADIUS, pl.y + pl.facing.y * PLAYER_RADIUS);
-  ctx.lineTo(pl.x + pl.facing.x * (PLAYER_RADIUS + 10) - pl.facing.y * 6, pl.y + pl.facing.y * (PLAYER_RADIUS + 10) + pl.facing.x * 6);
-  ctx.lineTo(pl.x + pl.facing.x * (PLAYER_RADIUS + 10) + pl.facing.y * 6, pl.y + pl.facing.y * (PLAYER_RADIUS + 10) - pl.facing.x * 6);
+  ctx.moveTo(R - 3, bob - 3.2);
+  ctx.lineTo(R - 3, bob + 3.2);
+  ctx.lineTo(R + 6.5, bob);
   ctx.closePath();
-  ctx.fillStyle = '#212529';
   ctx.fill();
 
-  // stun stars
+  // --- eyes ---
+  if (pose === 'fart') {
+    ctx.strokeStyle = '#212529'; ctx.lineWidth = 1.6; ctx.lineCap = 'round';
+    [-5, 5].forEach(ey => {
+      ctx.beginPath();
+      ctx.arc(R * 0.4, bob + ey, 2.6, Math.PI * 0.15, Math.PI * 0.85);
+      ctx.stroke();
+    });
+  } else {
+    [-5, 5].forEach(ey => {
+      ctx.fillStyle = '#212529';
+      ctx.beginPath(); ctx.arc(R * 0.4, bob + ey, 2.3, 0, Math.PI * 2); ctx.fill();
+      ctx.fillStyle = '#fff';
+      ctx.beginPath(); ctx.arc(R * 0.4 + 0.8, bob + ey - 0.8, 0.8, 0, Math.PI * 2); ctx.fill();
+    });
+  }
+
+  // --- blush ---
+  const blushR = pose === 'fart' ? 3.2 : 2.3;
+  ctx.fillStyle = pose === 'fart' ? 'rgba(255,130,130,0.85)' : 'rgba(255,168,168,0.6)';
+  [-9, 9].forEach(ey => {
+    ctx.beginPath();
+    ctx.arc(R * 0.05, bob + ey, blushR, 0, Math.PI * 2);
+    ctx.fill();
+  });
+
+  // --- team ribbon (identifies P1 / P2) ---
+  ctx.strokeStyle = pl.color; ctx.lineWidth = 3; ctx.lineCap = 'round';
+  ctx.beginPath();
+  ctx.arc(0, bob, R - 1, Math.PI * 1.15, Math.PI * 1.85);
+  ctx.stroke();
+
+  ctx.restore();
+}
+
+function drawPlayer(pl) {
+  drawCharacter(pl);
+
+  // stun stars (screen-space, unrotated for legibility)
   if (pl.stunTimer > 0) {
     ctx.fillStyle = '#ffd43b';
     ctx.font = '14px sans-serif';
     ctx.fillText('✦✦', pl.x - 12, pl.y - PLAYER_RADIUS - 8);
   }
-  ctx.restore();
 
   // ultimate charge gauge
   const gw = 40, gh = 6, gx = pl.x - gw / 2, gy = pl.y - PLAYER_RADIUS - 24;
@@ -745,12 +883,11 @@ function drawPlayer(pl) {
 }
 
 function drawAttackFx(pl) {
+  // kick/fart hit boxes are intentionally invisible now (only the character
+  // animation itself telegraphs them); the ultimate keeps its flash since
+  // it's a rarer, more dramatic move.
   if (pl.attackFx <= 0) return;
-  if (pl.attackType === 'kick') {
-    drawHitRect(pl, pl.facing, HIT_START, HIT_START + KICK_LENGTH, KICK_HALF_WIDTH, 'rgba(255,255,255,0.9)');
-  } else if (pl.attackType === 'fart') {
-    drawHitRect(pl, { x: -pl.facing.x, y: -pl.facing.y }, HIT_START, HIT_START + FART_LENGTH, FART_HALF_WIDTH, 'rgba(180,255,120,0.9)');
-  } else if (pl.attackType === 'ultimate') {
+  if (pl.attackType === 'ultimate') {
     drawHitRect(pl, pl.facing, HIT_START, HIT_START + ULTIMATE_LENGTH, ULTIMATE_HALF_WIDTH, 'rgba(255,212,59,0.95)');
   }
 }
