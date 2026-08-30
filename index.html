@@ -260,9 +260,10 @@ const KICK_FX_DUR = 0.12;
 const FART_FX_DUR = 0.18;
 const ULTIMATE_FX_DUR = 0.22;
 
-// ---------- Character skins: each has run/kick/fart images; falls back to ----------
-// ---------- the built-in vector chick for any pose that has no image yet. ----------
-const SPRITE_SIZE = 50; // on-screen draw size in px; design art on a square canvas, character centered, facing right
+// ---------- Character skins: each has run/kick/fart images, drawn separately ----------
+// ---------- for left- and right-facing so no mirroring/rotation distortion is ----------
+// ---------- needed left-to-right; falls back to the vector chick if art is missing. ----------
+const SPRITE_SIZE = 50; // on-screen draw size in px; design art on a square canvas, character centered
 const CHARACTERS = [
   { id: 'chick', name: '병아리' },
   { id: 'potato', name: '감자' },
@@ -271,14 +272,17 @@ const characterImages = {};
 CHARACTERS.forEach(c => {
   characterImages[c.id] = {};
   ['run', 'kick', 'fart'].forEach(pose => {
-    const img = new Image();
-    img.onerror = () => { img.failed = true; };
-    img.src = `assets/characters/${c.id}/${pose}.png`;
-    characterImages[c.id][pose] = img;
+    characterImages[c.id][pose] = {};
+    ['left', 'right'].forEach(dir => {
+      const img = new Image();
+      img.onerror = () => { img.failed = true; };
+      img.src = `assets/characters/${c.id}/${pose}_${dir}.png`;
+      characterImages[c.id][pose][dir] = img;
+    });
   });
 });
-function poseImageReady(characterId, pose) {
-  const img = characterImages[characterId] && characterImages[characterId][pose];
+function poseImageReady(characterId, pose, dir) {
+  const img = characterImages[characterId] && characterImages[characterId][pose] && characterImages[characterId][pose][dir];
   return !!img && img.complete && img.naturalWidth > 0 && !img.failed;
 }
 
@@ -593,9 +597,9 @@ function buildCharacterPicker(container, player) {
     btn.className = 'char-btn';
     btn.title = c.name;
     btn.dataset.charId = c.id;
-    if (poseImageReady(c.id, 'run')) {
+    if (poseImageReady(c.id, 'run', 'right')) {
       const img = document.createElement('img');
-      img.src = characterImages[c.id].run.src;
+      img.src = characterImages[c.id].run.right.src;
       btn.appendChild(img);
     } else {
       btn.textContent = '🐣';
@@ -608,7 +612,7 @@ buildCharacterPicker(charPicksP1, p1);
 buildCharacterPicker(charPicksP2, p2);
 // once a character's run-pose art finishes loading, swap the picker icon in for the emoji placeholder
 CHARACTERS.forEach(c => {
-  characterImages[c.id].run.addEventListener('load', () => {
+  characterImages[c.id].run.right.addEventListener('load', () => {
     buildCharacterPicker(charPicksP1, p1);
     buildCharacterPicker(charPicksP2, p2);
   });
@@ -932,19 +936,16 @@ function drawVectorChick(pl, pose, angle, stunned) {
   ctx.restore();
 }
 
-function drawImageChick(pl, pose, angle, stunned, img) {
+const IMAGE_MAX_TILT = 0.5; // radians (~29deg) - leans toward up/down without ever flipping upside-down
+
+function drawImageChick(pl, tilt, stunned, img) {
   ctx.save();
   ctx.translate(pl.x, pl.y);
   if (stunned) ctx.translate(Math.sin(performance.now() / 20) * 2, 0);
-  ctx.rotate(angle);
-
-  ctx.save();
-  // the run art faces left while kick/fart face right; mirror run so all three
-  // poses agree on "facing right" as the canonical orientation before rotation.
-  if (pose === 'run') ctx.scale(-1, 1);
+  ctx.rotate(tilt);
   if (stunned) ctx.filter = 'grayscale(0.9) brightness(1.05)';
   ctx.drawImage(img, -SPRITE_SIZE / 2, -SPRITE_SIZE / 2, SPRITE_SIZE, SPRITE_SIZE);
-  ctx.restore();
+  ctx.filter = 'none';
 
   // team ribbon on top, so any character skin still reads as P1 (blue) / P2 (red)
   ctx.strokeStyle = pl.color; ctx.lineWidth = 3; ctx.lineCap = 'round';
@@ -955,13 +956,19 @@ function drawImageChick(pl, pose, angle, stunned, img) {
 }
 
 function drawCharacter(pl) {
-  const angle = Math.atan2(pl.facing.y, pl.facing.x);
   const stunned = pl.stunTimer > 0;
   const pose = getPose(pl);
 
-  if (poseImageReady(pl.characterId, pose)) {
-    drawImageChick(pl, pose, angle, stunned, characterImages[pl.characterId][pose]);
+  // pick the correctly-drawn left/right art for the current facing; keep the
+  // last clear horizontal side while moving purely up/down so it doesn't flicker
+  if (Math.abs(pl.facing.x) > 0.01) pl.facingSide = pl.facing.x >= 0 ? 'right' : 'left';
+  if (!pl.facingSide) pl.facingSide = 'right';
+
+  if (poseImageReady(pl.characterId, pose, pl.facingSide)) {
+    const tilt = Math.max(-1, Math.min(1, pl.facing.y)) * IMAGE_MAX_TILT;
+    drawImageChick(pl, tilt, stunned, characterImages[pl.characterId][pose][pl.facingSide]);
   } else {
+    const angle = Math.atan2(pl.facing.y, pl.facing.x);
     drawVectorChick(pl, pose, angle, stunned);
   }
 }
