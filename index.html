@@ -96,8 +96,19 @@
     font-size: 11px; color: var(--text); min-width: 12px; text-align: center;
   }
   .rules-box { margin-top: 14px; padding-top: 12px; border-top: 1px solid var(--panel-border); }
-  .rules-box h3 { margin: 0 0 8px; font-size: 12px; color: var(--text-dim); text-transform: uppercase; letter-spacing: 1px; }
+  .rules-box summary {
+    margin: 0 0 8px; font-size: 12px; color: var(--text-dim); text-transform: uppercase;
+    letter-spacing: 1px; cursor: pointer; list-style: none; user-select: none;
+    display: flex; align-items: center; justify-content: space-between;
+  }
+  .rules-box summary::-webkit-details-marker { display: none; }
+  .rules-box summary::after {
+    content: '▸'; font-size: 11px; color: var(--text-dim); transition: transform .15s ease;
+  }
+  .rules-box[open] summary::after { transform: rotate(90deg); }
+  .rules-box summary:hover { color: var(--text); }
   .rules-box p { margin: 0 0 8px; font-size: 12px; line-height: 1.55; color: #b8c0d2; }
+  .rules-box p:first-of-type { margin-top: 4px; }
 
   /* ---- right panel: play settings ---- */
   .settings-block { margin-bottom: 16px; }
@@ -191,13 +202,13 @@
           </ul>
         </div>
       </div>
-      <div class="rules-box">
-        <h3>규칙</h3>
+      <details class="rules-box">
+        <summary>규칙</summary>
         <p>공을 건드리면 소유! 소유 중 발차기·필살기로 슛.</p>
         <p>발차기(앞)·방구(뒤) 판정에 맞으면 기절하고 공 소유권을 빼앗깁니다.</p>
         <p>필살기는 시간이 지나야 충전됩니다.</p>
         <p><kbd>P</kbd> 일시정지 · <kbd>M</kbd> 메뉴 (재시작은 오른쪽 버튼)</p>
-      </div>
+      </details>
     </aside>
 
     <main class="stage">
