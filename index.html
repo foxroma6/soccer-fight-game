@@ -122,6 +122,21 @@
   }
   .action-btn:disabled { opacity: 0.35; cursor: not-allowed; }
 
+  .char-pick-label {
+    display: flex; align-items: center; gap: 6px;
+    font-size: 11px; color: var(--text-dim); margin: 6px 0 4px;
+  }
+  .char-pick-row { display: flex; gap: 6px; margin-bottom: 4px; flex-wrap: wrap; }
+  .char-btn {
+    width: 40px; height: 40px; border-radius: 8px; padding: 0;
+    background: #1c2333; border: 2px solid var(--panel-border);
+    cursor: pointer; display: flex; align-items: center; justify-content: center;
+    font-size: 20px; overflow: hidden; transition: filter .12s ease, border-color .12s ease;
+  }
+  .char-btn img { width: 100%; height: 100%; object-fit: contain; }
+  .char-btn:hover { filter: brightness(1.2); }
+  .char-btn.active { border-color: var(--accent); box-shadow: inset 0 0 0 1px var(--accent); }
+
   .status-row {
     display: flex; justify-content: space-between; font-size: 12.5px;
     padding: 6px 0; border-bottom: 1px dashed var(--panel-border); color: #c3cbdc;
@@ -186,6 +201,14 @@
       </div>
 
       <div class="settings-block">
+        <h3>캐릭터 선택</h3>
+        <div class="char-pick-label"><span class="dot dot-p1"></span>P1</div>
+        <div id="charPicksP1" class="char-pick-row"></div>
+        <div class="char-pick-label"><span class="dot dot-p2"></span>P2</div>
+        <div id="charPicksP2" class="char-pick-row"></div>
+      </div>
+
+      <div class="settings-block">
         <h3>현재 상태</h3>
         <div class="status-row"><span>모드</span><span id="statMode">-</span></div>
         <div class="status-row"><span>스코어</span><span id="statScore">0 : 0</span></div>
@@ -237,6 +260,28 @@ const KICK_FX_DUR = 0.12;
 const FART_FX_DUR = 0.18;
 const ULTIMATE_FX_DUR = 0.22;
 
+// ---------- Character skins: each has run/kick/fart images; falls back to ----------
+// ---------- the built-in vector chick for any pose that has no image yet. ----------
+const SPRITE_SIZE = 50; // on-screen draw size in px; design art on a square canvas, character centered, facing right
+const CHARACTERS = [
+  { id: 'chick', name: '병아리' },
+  { id: 'potato', name: '감자' },
+];
+const characterImages = {};
+CHARACTERS.forEach(c => {
+  characterImages[c.id] = {};
+  ['run', 'kick', 'fart'].forEach(pose => {
+    const img = new Image();
+    img.onerror = () => { img.failed = true; };
+    img.src = `assets/characters/${c.id}/${pose}.png`;
+    characterImages[c.id][pose] = img;
+  });
+});
+function poseImageReady(characterId, pose) {
+  const img = characterImages[characterId] && characterImages[characterId][pose];
+  return !!img && img.complete && img.naturalWidth > 0 && !img.failed;
+}
+
 // ---------- Input ----------
 const keys = new Set();
 const justPressed = new Set();
@@ -258,6 +303,7 @@ function makePlayer(x, y, color, facing) {
     attackFx: 0, attackType: null,
     ultimateCharge: 0,
     animPhase: 0,
+    characterId: 'chick',
   };
 }
 
@@ -531,12 +577,42 @@ const btnRestart = document.getElementById('btnRestart');
 const btnMenu = document.getElementById('btnMenu');
 const statMode = document.getElementById('statMode');
 const statScore = document.getElementById('statScore');
+const charPicksP1 = document.getElementById('charPicksP1');
+const charPicksP2 = document.getElementById('charPicksP2');
 
 btnMode1p.addEventListener('click', () => startMatch('1p'));
 btnMode2p.addEventListener('click', () => startMatch('2p'));
 btnPause.addEventListener('click', togglePause);
 btnRestart.addEventListener('click', doRestart);
 btnMenu.addEventListener('click', goToMenu);
+
+function buildCharacterPicker(container, player) {
+  container.innerHTML = '';
+  CHARACTERS.forEach(c => {
+    const btn = document.createElement('button');
+    btn.className = 'char-btn';
+    btn.title = c.name;
+    btn.dataset.charId = c.id;
+    if (poseImageReady(c.id, 'run')) {
+      const img = document.createElement('img');
+      img.src = characterImages[c.id].run.src;
+      btn.appendChild(img);
+    } else {
+      btn.textContent = '🐣';
+    }
+    btn.addEventListener('click', () => { player.characterId = c.id; });
+    container.appendChild(btn);
+  });
+}
+buildCharacterPicker(charPicksP1, p1);
+buildCharacterPicker(charPicksP2, p2);
+// once a character's run-pose art finishes loading, swap the picker icon in for the emoji placeholder
+CHARACTERS.forEach(c => {
+  characterImages[c.id].run.addEventListener('load', () => {
+    buildCharacterPicker(charPicksP1, p1);
+    buildCharacterPicker(charPicksP2, p2);
+  });
+});
 
 function syncUI() {
   btnPause.disabled = !(state === 'playing' || state === 'paused');
@@ -547,6 +623,8 @@ function syncUI() {
   btnMode2p.classList.toggle('active', gameMode === '2p' && state !== 'menu');
   statMode.textContent = gameMode ? (gameMode === '1p' ? '1인용 (AI)' : '2인용') : '-';
   statScore.textContent = `${score1} : ${score2}`;
+  [...charPicksP1.children].forEach(b => b.classList.toggle('active', b.dataset.charId === p1.characterId));
+  [...charPicksP2.children].forEach(b => b.classList.toggle('active', b.dataset.charId === p2.characterId));
 }
 
 function update(dt) {
@@ -729,14 +807,13 @@ function chickWing(wx, wy, rot, fill, stroke) {
   ctx.restore();
 }
 
-function drawCharacter(pl) {
-  const angle = Math.atan2(pl.facing.y, pl.facing.x);
-  const stunned = pl.stunTimer > 0;
+function getPose(pl) {
+  if (pl.attackFx > 0 && (pl.attackType === 'kick' || pl.attackType === 'ultimate')) return 'kick';
+  if (pl.attackFx > 0 && pl.attackType === 'fart') return 'fart';
+  return 'run';
+}
 
-  let pose = 'run';
-  if (pl.attackFx > 0 && (pl.attackType === 'kick' || pl.attackType === 'ultimate')) pose = 'kick';
-  else if (pl.attackFx > 0 && pl.attackType === 'fart') pose = 'fart';
-
+function drawVectorChick(pl, pose, angle, stunned) {
   const bodyFill = stunned ? '#ced4da' : '#ffe066';
   const bodyStroke = stunned ? '#868e96' : '#f59f00';
   const wingFill = stunned ? '#b0b5bd' : '#ffd43b';
@@ -853,6 +930,40 @@ function drawCharacter(pl) {
   ctx.stroke();
 
   ctx.restore();
+}
+
+function drawImageChick(pl, pose, angle, stunned, img) {
+  ctx.save();
+  ctx.translate(pl.x, pl.y);
+  if (stunned) ctx.translate(Math.sin(performance.now() / 20) * 2, 0);
+  ctx.rotate(angle);
+
+  ctx.save();
+  // the run art faces left while kick/fart face right; mirror run so all three
+  // poses agree on "facing right" as the canonical orientation before rotation.
+  if (pose === 'run') ctx.scale(-1, 1);
+  if (stunned) ctx.filter = 'grayscale(0.9) brightness(1.05)';
+  ctx.drawImage(img, -SPRITE_SIZE / 2, -SPRITE_SIZE / 2, SPRITE_SIZE, SPRITE_SIZE);
+  ctx.restore();
+
+  // team ribbon on top, so any character skin still reads as P1 (blue) / P2 (red)
+  ctx.strokeStyle = pl.color; ctx.lineWidth = 3; ctx.lineCap = 'round';
+  ctx.beginPath();
+  ctx.arc(0, 0, SPRITE_SIZE * 0.29, Math.PI * 1.15, Math.PI * 1.85);
+  ctx.stroke();
+  ctx.restore();
+}
+
+function drawCharacter(pl) {
+  const angle = Math.atan2(pl.facing.y, pl.facing.x);
+  const stunned = pl.stunTimer > 0;
+  const pose = getPose(pl);
+
+  if (poseImageReady(pl.characterId, pose)) {
+    drawImageChick(pl, pose, angle, stunned, characterImages[pl.characterId][pose]);
+  } else {
+    drawVectorChick(pl, pose, angle, stunned);
+  }
 }
 
 function drawPlayer(pl) {
