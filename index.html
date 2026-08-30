@@ -160,30 +160,43 @@
   <div class="game-shell">
     <aside class="panel side-left">
       <h2 class="panel-title">조작법</h2>
-      <div class="player-card p1">
-        <div class="player-card-head"><span class="dot dot-p1"></span>P1 (파랑)</div>
-        <ul class="key-list">
-          <li><span>이동</span><span class="keys"><kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd></span></li>
-          <li><span>발차기</span><kbd>F</kbd></li>
-          <li><span>방구</span><kbd>G</kbd></li>
-          <li><span>필살기</span><kbd>E</kbd></li>
-        </ul>
+      <div id="controlsDuo">
+        <div class="player-card p1">
+          <div class="player-card-head"><span class="dot dot-p1"></span>P1 (파랑)</div>
+          <ul class="key-list">
+            <li><span>이동</span><span class="keys"><kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd></span></li>
+            <li><span>발차기</span><kbd>R</kbd></li>
+            <li><span>방구</span><kbd>T</kbd></li>
+            <li><span>필살기</span><kbd>Y</kbd></li>
+          </ul>
+        </div>
+        <div class="player-card p2">
+          <div class="player-card-head"><span class="dot dot-p2"></span>P2 (빨강)</div>
+          <ul class="key-list">
+            <li><span>이동</span><span class="keys"><kbd>↑</kbd><kbd>↓</kbd><kbd>←</kbd><kbd>→</kbd></span></li>
+            <li><span>발차기</span><kbd>,</kbd></li>
+            <li><span>방구</span><kbd>.</kbd></li>
+            <li><span>필살기</span><kbd>/</kbd></li>
+          </ul>
+        </div>
       </div>
-      <div class="player-card p2">
-        <div class="player-card-head"><span class="dot dot-p2"></span>P2 (빨강)</div>
-        <ul class="key-list">
-          <li><span>이동</span><span class="keys"><kbd>↑</kbd><kbd>↓</kbd><kbd>←</kbd><kbd>→</kbd></span></li>
-          <li><span>발차기</span><kbd>L</kbd></li>
-          <li><span>방구</span><kbd>K</kbd></li>
-          <li><span>필살기</span><kbd>;</kbd></li>
-        </ul>
+      <div id="controlsSolo" style="display:none;">
+        <div class="player-card p1">
+          <div class="player-card-head"><span class="dot dot-p1"></span>플레이어 (VS AI)</div>
+          <ul class="key-list">
+            <li><span>이동</span><span class="keys"><kbd>↑</kbd><kbd>↓</kbd><kbd>←</kbd><kbd>→</kbd></span></li>
+            <li><span>발차기</span><kbd>A</kbd></li>
+            <li><span>방구</span><kbd>S</kbd></li>
+            <li><span>필살기</span><kbd>D</kbd></li>
+          </ul>
+        </div>
       </div>
       <div class="rules-box">
         <h3>규칙</h3>
         <p>공을 건드리면 소유! 소유 중 발차기·필살기로 슛.</p>
         <p>발차기(앞)·방구(뒤) 판정에 맞으면 기절하고 공 소유권을 빼앗깁니다.</p>
         <p>필살기는 시간이 지나야 충전됩니다.</p>
-        <p><kbd>P</kbd> 일시정지 · <kbd>R</kbd> 재시작 · <kbd>M</kbd> 메뉴</p>
+        <p><kbd>P</kbd> 일시정지 · <kbd>M</kbd> 메뉴 (재시작은 오른쪽 버튼)</p>
       </div>
     </aside>
 
@@ -583,6 +596,8 @@ const statMode = document.getElementById('statMode');
 const statScore = document.getElementById('statScore');
 const charPicksP1 = document.getElementById('charPicksP1');
 const charPicksP2 = document.getElementById('charPicksP2');
+const controlsDuo = document.getElementById('controlsDuo');
+const controlsSolo = document.getElementById('controlsSolo');
 
 btnMode1p.addEventListener('click', () => startMatch('1p'));
 btnMode2p.addEventListener('click', () => startMatch('2p'));
@@ -627,6 +642,8 @@ function syncUI() {
   btnMode2p.classList.toggle('active', gameMode === '2p' && state !== 'menu');
   statMode.textContent = gameMode ? (gameMode === '1p' ? '1인용 (AI)' : '2인용') : '-';
   statScore.textContent = `${score1} : ${score2}`;
+  controlsSolo.style.display = gameMode === '1p' ? '' : 'none';
+  controlsDuo.style.display = gameMode === '1p' ? 'none' : '';
   [...charPicksP1.children].forEach(b => b.classList.toggle('active', b.dataset.charId === p1.characterId));
   [...charPicksP2.children].forEach(b => b.classList.toggle('active', b.dataset.charId === p2.characterId));
 }
@@ -648,8 +665,6 @@ function update(dt) {
   }
   if (state === 'paused') { justPressed.clear(); return; }
 
-  if (justPressed.has('r') && gameMode) { doRestart(); justPressed.clear(); return; }
-
   if (state === 'goal') {
     stateTimer -= dt;
     if (stateTimer <= 0) {
@@ -661,23 +676,31 @@ function update(dt) {
   }
   if (state === 'over') { justPressed.clear(); return; }
 
-  const p1Move = humanMoveDir('w', 's', 'a', 'd');
+  let p1Move, p1Kick, p1Fart, p1Ult;
   let p2Move, p2Kick, p2Fart, p2Ult;
   if (gameMode === '1p') {
+    // solo vs AI: arrow keys to move, A/S/D to attack
+    p1Move = humanMoveDir('arrowup', 'arrowdown', 'arrowleft', 'arrowright');
+    p1Kick = justPressed.has('a'); p1Fart = justPressed.has('s'); p1Ult = justPressed.has('d');
+
     updateAI(dt);
     p2Move = aiMoveDir();
     p2Kick = aiState.wantKick; p2Fart = aiState.wantFart; p2Ult = aiState.wantUlt;
   } else {
+    // 2-player: P1 on WASD/R/T/Y, P2 on arrow keys/,/./ /
+    p1Move = humanMoveDir('w', 's', 'a', 'd');
+    p1Kick = justPressed.has('r'); p1Fart = justPressed.has('t'); p1Ult = justPressed.has('y');
+
     p2Move = humanMoveDir('arrowup', 'arrowdown', 'arrowleft', 'arrowright');
-    p2Kick = justPressed.has('l'); p2Fart = justPressed.has('k'); p2Ult = justPressed.has(';');
+    p2Kick = justPressed.has(','); p2Fart = justPressed.has('.'); p2Ult = justPressed.has('/');
   }
 
   updatePlayer(p1, dt, p1Move);
   updatePlayer(p2, dt, p2Move);
 
-  tryAttack(p1, p2, justPressed.has('f'), justPressed.has('g'));
+  tryAttack(p1, p2, p1Kick, p1Fart);
   tryAttack(p2, p1, p2Kick, p2Fart);
-  tryUltimate(p1, p2, justPressed.has('e'));
+  tryUltimate(p1, p2, p1Ult);
   tryUltimate(p2, p1, p2Ult);
 
   updateKeeper(keeper1, dt);
