@@ -215,20 +215,6 @@
         <div class="status-row"><span>목표</span><span>5골 선취</span></div>
       </details>
 
-      <details class="collapse-section" open>
-        <summary>액션</summary>
-        <button id="btnPause" class="action-btn" disabled>⏸ 일시정지</button>
-        <button id="btnRestart" class="action-btn" disabled>🔄 다시하기</button>
-        <button id="btnMenu" class="action-btn" disabled>🏠 메인으로</button>
-      </details>
-
-      <details class="collapse-section">
-        <summary>규칙</summary>
-        <p>공을 건드리면 소유! 소유 중 발차기·필살기로 슛.</p>
-        <p>발차기(앞)·방구(뒤) 판정에 맞으면 기절하고 공 소유권을 빼앗깁니다.</p>
-        <p>필살기는 시간이 지나야 충전됩니다.</p>
-        <p><kbd>P</kbd> 일시정지 · <kbd>M</kbd> 메뉴 (재시작은 왼쪽 액션 버튼)</p>
-      </details>
     </aside>
 
     <main class="stage">
@@ -250,6 +236,13 @@
         <div id="charPicksP1" class="char-pick-row"></div>
         <div class="char-pick-label"><span class="dot dot-p2"></span>P2</div>
         <div id="charPicksP2" class="char-pick-row"></div>
+      </div>
+
+      <div class="settings-block">
+        <h3>액션</h3>
+        <button id="btnPause" class="action-btn" disabled>⏸ 일시정지</button>
+        <button id="btnRestart" class="action-btn" disabled>🔄 다시하기</button>
+        <button id="btnMenu" class="action-btn" disabled>🏠 메인으로</button>
       </div>
     </aside>
   </div>
@@ -1086,7 +1079,7 @@ function drawUI() {
     ctx.fillText(winner, canvas.width / 2, 240);
     ctx.font = '16px sans-serif';
     ctx.fillStyle = '#dee2e6';
-    ctx.fillText('왼쪽 패널에서 다시하기 / 메인으로를 선택하세요', canvas.width / 2, 274);
+    ctx.fillText('오른쪽 패널에서 다시하기 / 메인으로를 선택하세요', canvas.width / 2, 274);
   }
   ctx.textAlign = 'left';
 }
@@ -1100,7 +1093,7 @@ function drawPauseOverlay() {
   ctx.fillText('일시정지', canvas.width / 2, 240);
   ctx.font = '16px sans-serif';
   ctx.fillStyle = '#dee2e6';
-  ctx.fillText('왼쪽 패널에서 계속하기를 눌러주세요', canvas.width / 2, 270);
+  ctx.fillText('오른쪽 패널에서 계속하기를 눌러주세요', canvas.width / 2, 270);
   ctx.textAlign = 'left';
 }
 
